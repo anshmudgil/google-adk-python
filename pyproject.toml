@@ -394,7 +394,7 @@ skip = "*CHANGELOG.md,*.lock,*.ipynb,*.json,*.js,*.map,*/cli/browser/*,constrain
 
 [tool.mypy]
 mypy_path = [ "src" ]
-exclude = [ "contributing/samples/", "tests/" ]
+exclude = [ "contributing/everlin/", "contributing/samples/", "tests/" ]
 namespace_packages = true
 explicit_package_bases = true
 follow_imports = "normal"
