@@ -4,8 +4,9 @@ Analytical office for Everlin Family Office, built on the Agent Development
 Kit. Phase 1 screens investments and property, writes the daily and weekly
 briefings, and logs every recommendation.
 
-The engines decide the lean. A model is not required for template conformance.
-`agent.py` exposes `root_agent` for the ADK CLI when `google-adk` is installed.
+The engines decide the lean. The ADK workflow then runs an analyst agent, and
+the published memo stays the engine text if the model paraphrases it or the
+model call fails. `agent.py` exposes `root_agent`.
 
 ## Scope
 
@@ -36,6 +37,17 @@ From the repository root:
 PYTHONPATH=contributing/everlin python -m everlin.cli daily --as-of 2026-09-30
 PYTHONPATH=contributing/everlin python -m pytest tests/unittests/everlin -q
 ```
+
+ADK CLI, from `contributing/` after copying `everlin/.env.example` to
+`everlin/.env` and setting `GOOGLE_API_KEY`:
+
+```bash
+adk run everlin
+adk web .
+```
+
+Send a command as the user message, for example `daily`. The analyst model is
+`gemini-2.5-flash`.
 
 Chat commands, first line then an optional JSON body:
 

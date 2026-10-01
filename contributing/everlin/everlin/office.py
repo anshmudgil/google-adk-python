@@ -499,35 +499,8 @@ def default_office() -> Office:
   )
 
 
-def build_root_agent(office: Office):
+def build_root_agent(office: Office, model: str | object = "gemini-2.5-flash"):
   """ADK workflow. Imported lazily so the engines run without the SDK."""
-  from google.adk import Event
-  from google.adk import Workflow
+  from .graph import build_office_workflow
 
-  def route(node_input: str):
-    return Event(output=node_input, route=office.route(node_input))
-
-  def run_investment(node_input: str) -> str:
-    return office.ask(node_input).rendered
-
-  def run_property(node_input: str) -> str:
-    return office.ask(node_input).rendered
-
-  def run_joint(node_input: str) -> str:
-    return office.ask(node_input).rendered
-
-  return Workflow(
-      name="everlin_office",
-      description="Everlin Family Office analytical engine.",
-      edges=[
-          ("START", route),
-          (
-              route,
-              {
-                  "investment": run_investment,
-                  "property": run_property,
-                  "joint": run_joint,
-              },
-          ),
-      ],
-  )
+  return build_office_workflow(office, model)

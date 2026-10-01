@@ -12,11 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""ADK entry point. `root_agent` is the office workflow."""
-
-from __future__ import annotations
-
-from .everlin.office import build_root_agent
-from .everlin.office import default_office
-
-root_agent = build_root_agent(default_office())
+from . import agent

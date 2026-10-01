@@ -18,6 +18,10 @@ from datetime import date
 from datetime import datetime
 from datetime import timedelta
 import json
+import os
+from pathlib import Path
+import subprocess
+import sys
 
 from everlin.audit import AuditLog
 from everlin.behaviour import collapse_range
@@ -46,12 +50,8 @@ from everlin.team import load_team
 from everlin.team import owner_for
 import pytest
 
-CONFIG = (
-    __import__("pathlib").Path(__file__).resolve().parents[3]
-    / "contributing"
-    / "everlin"
-    / "config"
-)
+REPO = Path(__file__).resolve().parents[3]
+CONFIG = REPO / "contributing" / "everlin" / "config"
 
 
 def _confirmed() -> OfficeParameters:
@@ -493,26 +493,75 @@ def test_specification_sync_and_daily_deadline():
   assert due.utcoffset() == timedelta(hours=10)
 
 
-def test_workflow_routes_to_the_investment_analyst():
-  pytest.importorskip("google.adk")
+def _scripted_llm(**kwargs):
+  from google.adk.models.base_llm import BaseLlm
+  from google.adk.models.llm_response import LlmResponse
+  from google.genai import types
+  from pydantic import Field
+
+  class ScriptedLlm(BaseLlm):
+    model: str = "scripted"
+    texts: list[str] = Field(default_factory=list)
+    call_tool: bool = False
+    boom: bool = False
+    seen: int = 0
+
+    async def generate_content_async(self, llm_request, stream: bool = False):
+      del llm_request, stream
+      self.seen += 1
+      if self.boom:
+        raise RuntimeError("model unavailable")
+      if self.call_tool and self.seen == 1:
+        yield LlmResponse(
+            content=types.Content(
+                role="model",
+                parts=[
+                    types.Part(
+                        function_call=types.FunctionCall(
+                            name="read_screening_memo",
+                            args={"reference_hint": "current"},
+                            id="fc-memo",
+                        )
+                    )
+                ],
+            )
+        )
+        return
+      text = self.texts[0] if self.texts else ""
+      yield LlmResponse(
+          content=types.Content(role="model", parts=[types.Part(text=text)])
+      )
+
+  return ScriptedLlm(**kwargs)
+
+
+def _node_name(event) -> str | None:
+  if not event.node_info:
+    return None
+  return event.node_info.path.split("/")[-1].split("@")[0]
+
+
+def _event_text(event) -> str:
+  if not event.content or not event.content.parts:
+    return ""
+  return "".join(part.text or "" for part in event.content.parts)
+
+
+def _run_office(office: Office, text: str, model):
   import asyncio
 
   from everlin.office import build_root_agent
   from google.adk.runners import InMemoryRunner
   from google.genai import types
 
-  office = Office.open_memory(OfficeParameters.load(CONFIG / "parameters.json"))
-  agent = build_root_agent(office)
+  agent = build_root_agent(office, model)
 
   async def _run():
-    runner = InMemoryRunner(agent=agent, app_name="everlin")
+    runner = InMemoryRunner(agent=agent, app_name="everlin-e2e")
     session = await runner.session_service.create_session(
-        app_name="everlin", user_id="jordan"
+        app_name="everlin-e2e", user_id="jordan"
     )
-    message = types.Content(
-        role="user",
-        parts=[types.Part(text="screen-investment\n" + json.dumps(_buffett()))],
-    )
+    message = types.Content(role="user", parts=[types.Part(text=text)])
     events = []
     async for event in runner.run_async(
         user_id="jordan",
@@ -522,9 +571,93 @@ def test_workflow_routes_to_the_investment_analyst():
       events.append(event)
     return events
 
-  events = asyncio.run(_run())
-  text = "\n".join(
-      event.output for event in events if isinstance(event.output, str)
+  return asyncio.run(_run())
+
+
+def test_workflow_routes_to_the_investment_analyst():
+  pytest.importorskip("google.adk")
+  office = Office.open_memory(OfficeParameters.load(CONFIG / "parameters.json"))
+  model = _scripted_llm(texts=["DECLINE. This lean is invented."])
+  events = _run_office(
+      office,
+      "screen-investment\n" + json.dumps(_buffett()),
+      model,
   )
-  assert "EVL-INV-SCR-2026-01" in text
-  assert "PROCEED" in text
+  sealed = [
+      event.output
+      for event in events
+      if _node_name(event) == "seal" and isinstance(event.output, str)
+  ]
+  assert sealed
+  assert "EVL-INV-SCR-2026-01" in sealed[-1]
+  assert "PROCEED" in sealed[-1]
+  assert "invented" not in sealed[-1]
+  visible = "\n".join(_event_text(event) for event in events)
+  assert "invented" not in visible
+  assert "PROCEED" in visible
+
+
+def test_workflow_tool_call_cannot_rewrite_the_memo():
+  pytest.importorskip("google.adk")
+  office = Office.open_memory(OfficeParameters.load(CONFIG / "parameters.json"))
+  model = _scripted_llm(
+      texts=["DECLINE. This lean is invented."],
+      call_tool=True,
+  )
+  events = _run_office(
+      office,
+      "screen-investment\n" + json.dumps(_buffett()),
+      model,
+  )
+  calls = [
+      part.function_call.name
+      for event in events
+      if event.content and event.content.parts
+      for part in event.content.parts
+      if part.function_call and part.function_call.name
+  ]
+  assert "read_screening_memo" in calls
+  sealed = [
+      event.output
+      for event in events
+      if _node_name(event) == "seal" and isinstance(event.output, str)
+  ]
+  assert "PROCEED" in sealed[-1]
+  assert len(office.audit.recommendations()) == 1
+
+
+def test_workflow_routes_property_and_survives_a_model_outage():
+  pytest.importorskip("google.adk")
+  office = Office.open_memory(OfficeParameters.load(CONFIG / "parameters.json"))
+  events = _run_office(
+      office,
+      "screen-property\n" + json.dumps(_site()),
+      _scripted_llm(boom=True),
+  )
+  sealed = [
+      event.output
+      for event in events
+      if _node_name(event) == "seal" and isinstance(event.output, str)
+  ]
+  assert "EVL-PROP-SCR-2026-01" in sealed[-1]
+  assert "PROCEED" in sealed[-1]
+
+
+def test_adk_discovers_the_office_agent():
+  pytest.importorskip("google.adk")
+  completed = subprocess.run(
+      [
+          sys.executable,
+          "-c",
+          (
+              "from everlin.agent import root_agent\n"
+              "assert root_agent.name == 'everlin_office'\n"
+          ),
+      ],
+      cwd=REPO,
+      env={**os.environ, "PYTHONPATH": str(REPO / "contributing")},
+      capture_output=True,
+      text=True,
+      check=False,
+  )
+  assert completed.returncode == 0, completed.stderr

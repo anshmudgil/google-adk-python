@@ -221,10 +221,22 @@ file version differ.
 
 ### ADK
 
-`build_root_agent(office)` returns a `Workflow` named `everlin_office`.
-The first node routes to `run_investment`, `run_property`, or `run_joint`.
-Those nodes call `Office.ask`. `contributing/everlin/agent.py` exposes
-`root_agent` for the ADK CLI once `google.adk` is installed.
+`build_root_agent(office, model="gemini-2.5-flash")` returns a `Workflow`
+named `everlin_office`. The graph is:
+
+1. `route` sends the command to investment, property, or joint.
+2. A compute node calls `Office.ask` and stores the memo as `canonical_memo`.
+3. An `LlmAgent` (`investment_analyst`, `property_analyst`, or
+   `joint_briefing`) runs in `single_turn` mode with `read_screening_memo`.
+   `after_model_callback` replaces any final model text with that memo.
+   `on_model_error_callback` does the same when the model call fails.
+4. `seal` publishes `canonical_memo` as both the node output and the message
+   the web UI renders.
+
+The model id is `gemini-2.5-flash`. Tests pass a `BaseLlm` instead.
+`contributing/everlin/agent.py` exposes `root_agent`. The directory is an
+ADK agent package: `__init__.py` imports `agent`. Copy `.env.example` to
+`.env` beside `agent.py` before `adk run` or `adk web`.
 
 ### Chat commands
 
