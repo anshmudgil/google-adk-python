@@ -1,0 +1,32 @@
+[
+  {
+    "name": "Jordan",
+    "role": "Principal",
+    "scope": "Final authority on all investment and development decisions.",
+    "filled": true
+  },
+  {
+    "name": "Jordan Hickey",
+    "role": "Head of Property",
+    "scope": "Site acquisition, planning, DA, construction, and delivery.",
+    "filled": false
+  },
+  {
+    "name": "Clyde McConaghy",
+    "role": "Chief Investment Officer",
+    "scope": "Non-real estate investments, allocation, and corpus protection.",
+    "filled": true
+  },
+  {
+    "name": "Nick Johnson, WMS",
+    "role": "Financial Controller",
+    "scope": "Modelling, tax, entities, compliance, and settlement.",
+    "filled": true
+  },
+  {
+    "name": "Lauren Pereira",
+    "role": "Office Manager",
+    "scope": "Office management and executive assistance.",
+    "filled": true
+  }
+]
